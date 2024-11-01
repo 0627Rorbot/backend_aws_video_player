@@ -6,6 +6,7 @@ const { Readable } = require('stream');
 const { parse } = require('date-fns');
 const path = require('path');
 const csv = require('csv-parser');
+// const WebVTTParser = require('vtt.js').WebVTTParser;
 
 // Initialize the S3 client
 const s3Client = new S3Client({
@@ -149,23 +150,24 @@ exports.readVTTFromS3 = async (bucketName, fileName) => {
 
   try {
     // Fetch the VTT file from S3
-    const response = await s3Client.send(command);
+    // const response = await s3Client.send(command);
 
-    // Convert the response Body (ReadableStream) into a string
-    const vttContent = await streamToString(response.Body);
+    // // Convert the response Body (ReadableStream) into a string
+    // const vttContent = await streamToString(response.Body);
 
-    // Parse the VTT content
-    const parser = new WebVTTParser();
-    const parsedData = parser.parse(vttContent);
+    // // Parse the VTT content
+    // const parser = new WebVTTParser();
+    // const parsedData = parser.parse(vttContent);
 
-    // Convert the parsed data into JSON format
-    const jsonData = parsedData.cues.map((cue) => ({
-      start: cue.startTime,
-      end: cue.endTime,
-      text: cue.text,
-    }));
+    // // Convert the parsed data into JSON format
+    // const jsonData = parsedData.cues.map((cue) => ({
+    //   start: cue.startTime,
+    //   end: cue.endTime,
+    //   text: cue.text,
+    // }));
 
-    return jsonData;
+    // return jsonData;
+    return {}
   } catch (error) {
     throw error;
   }

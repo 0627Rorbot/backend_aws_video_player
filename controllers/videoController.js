@@ -1,7 +1,8 @@
 require("dotenv").config();
 
+const { status } = require("express/lib/response");
 const Video = require("../models/Video");
-const {isKeyExistsInS3, generateSignedUrl, readCSVFromS3, readVTTFromS3, listVTTFiles} = require("../service/s3bucketManager")
+const {isKeyExistsInS3, generateSignedUrl, readCSVFromS3, readVTTFromS3, listVTTFiles, getAllUrlsinFolder, getDateURLfromKey} = require("../service/s3bucketManager")
 
 exports.getAllVideos = async (req, res) => {
   console.log("here");
@@ -366,40 +367,59 @@ exports.getNextVideo = async (req, res) => {
 };
 
 exports.getLiveVideos = async (req, res) => {
-  const bucketName = process.env.AWS_BUCKET_NAME;
-  const prefix = req.query.prefix || "VIDEO/";
-
   try {
-    // Define the command parameters
-    const params = {
-      Bucket: bucketName,
-      Prefix: prefix,
-    };
+    const bucket = process.env.AWS_BUCKET_NAME
 
-    // Execute the ListObjectsV2Command
-    const data = await s3Client.send(new ListObjectsV2Command(params));
+    const s3_videos = await getAllUrlsinFolder(bucket, "VIDEO/")
+    const db_videos = await Video.find({}).sort({date: 1}); // Latest videos first
 
-    // Filter out non-video files (optional, based on file extensions)
-    const videoFiles = (data.Contents || []).filter(file => {
-      const fileExtension = file.Key.split('.').pop();
-      return ["mkv"].includes(fileExtension);
-    }).map(async(file) => { 
-      
-      const command = new GetObjectCommand({
-        Bucket: bucketName,
-        Key: file.Key
-      });
-      
-      const signedUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 * 24 });
-      console.log(signedUrl);
-      
-      return {
-        key: file.Key,
-        signedUrl: signedUrl
+    for (const s3_video of s3_videos) {
+      const dateurl = getDateURLfromKey(s3_video.Key)
+      if(!dateurl.status) continue
+            
+      const is_live = db_videos.filter((db_video) => db_video.date.toISOString() === dateurl.date.toISOString()).length === 0 ? true : false
+      if(is_live) {
+        console.log(dateurl);
+        
+        let videoData = {
+          key: dateurl.path,
+          date: dateurl.date,
+          image: "",
+          metadata: "",
+          subtitle: "",
+          video: ""
+        };
+
+        const key = dateurl.path;
+        const imageKey = `IMAGE/${key}.jpg`
+        const metadataKey = `METADATA/${key}.csv`
+        const subtitleKey = `SUBTITLE/${key}-EN.vtt`
+        const videoKey = `VIDEO/${key}.mkv`
+
+        if(await isKeyExistsInS3(bucket, imageKey)) 
+          videoData.imageSignedUrl = await generateSignedUrl(bucket, imageKey)
+
+        if(await isKeyExistsInS3(bucket, metadataKey)) 
+          videoData.metadata = await readCSVFromS3(bucket, metadataKey)
+        
+        if(await isKeyExistsInS3(bucket, subtitleKey)) 
+          videoData.subtitle = await readVTTFromS3(bucket, subtitleKey)
+        
+        if(await isKeyExistsInS3(bucket, videoKey)) 
+          videoData.videoSignedUrl = await generateSignedUrl(bucket, videoKey)
+
+        const db_video = new Video({
+          key: dateurl.path,
+          date: dateurl.date
+        });
+        await db_video.save();
+
+        res.status(200).json({status: true, data: videoData});
+        return
       }
-    });
+    }
 
-    res.status(200).json(videoFiles);
+    res.status(200).json({status: false, data: {}});
   } catch (error) {
     console.error("Error fetching video list from S3:", error);
     res.status(500).json({ message: "Error fetching video list" });

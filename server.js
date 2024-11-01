@@ -27,10 +27,10 @@ app.use("/api/videos", videoRoutes);
 console.log("process.env.AWS_BUCKET_NAME", process.env.AWS_BUCKET_NAME);
 
 // Schedule the function to run every hour
-cron.schedule('0 * * * *', () => {
-  console.log('Running hourly URL generation job...');
-  saveUpdateS3Data_OnDB(process.env.AWS_BUCKET_NAME);
-});
+// cron.schedule('0 * * * *', () => {
+//   console.log('Running hourly URL generation job...');
+//   saveUpdateS3Data_OnDB(process.env.AWS_BUCKET_NAME);
+// });
 
 // Run the function once initially when the server starts
-saveUpdateS3Data_OnDB(process.env.AWS_BUCKET_NAME);
+// saveUpdateS3Data_OnDB(process.env.AWS_BUCKET_NAME);
