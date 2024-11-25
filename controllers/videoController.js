@@ -1,12 +1,11 @@
 require("dotenv").config();
+const { MongoClient } = require('mongodb');
 
 const { status } = require("express/lib/response");
 const Video = require("../models/Video");
 const {isKeyExistsInS3, generateSignedUrl, readCSVFromS3, readVTTFromS3, listVTTFiles, getAllUrlsinFolder, getDateURLfromKey} = require("../service/s3bucketManager")
 
 exports.getAllVideos = async (req, res) => {
-  console.log("here");
-  
   try {
     const videos = await Video.find().sort({ uploadDate: -1 }); // Latest videos first
     res.status(200).json(videos);
@@ -19,9 +18,9 @@ exports.getRecentVideo = async (req, res) => {
   try {
     const bucket = process.env.AWS_BUCKET_NAME
 
-    const videos = await Video.find({}).sort({ date: -1 }); // Latest videos first
+    const videos = await Video.find({}); // Latest videos first
     
-    const recentvideo = videos && videos.length > 0 ? videos[0] : undefined;
+    const recentvideo = videos && videos.length > 0 ? videos[videos.length-1] : undefined;
     
     if(recentvideo == undefined) {
       res.status(500).json({status: false});
@@ -29,7 +28,6 @@ exports.getRecentVideo = async (req, res) => {
     }
     
     const subtitleKeyList = await listVTTFiles(bucket, recentvideo.key.split("/")[0]);
-    console.log("subtitleKeyList", subtitleKeyList);
 
     const key = recentvideo.key;
     const imageKey = `IMAGE/${key}.jpg`
@@ -46,13 +44,10 @@ exports.getRecentVideo = async (req, res) => {
     if(await isKeyExistsInS3(bucket, metadataKey)) {
       // const metadataSignedUrl = await generateSignedUrl(bucket, metadataKey) 
       metadata = await readCSVFromS3(bucket, metadataKey)
-      console.log("metadata", metadata);
     }
-    if(await isKeyExistsInS3(bucket, subtitleKey)) {
-      // const subtitleSignedUrl = await generateSignedUrl(bucket, subtitleKey)
+    if(await isKeyExistsInS3(bucket, subtitleKey)) 
       subtitle = await readVTTFromS3(bucket, subtitleKey)
-      console.log("subtitle", subtitle);
-    }
+    
     if(await isKeyExistsInS3(bucket, videoKey)) videoSignedUrl = await generateSignedUrl(bucket, videoKey)
 
     const res_video = {
@@ -80,7 +75,6 @@ exports.getVideosByDate = async (req, res) => {
     const res_videos = videos.map( async() => {
       try {
         const subtitleKeyList = await listVTTFiles(bucket, recentvideo.key.split("/")[0]);
-        console.log("subtitleKeyList", subtitleKeyList);
 
         const key = recentvideo.key;
         const imageKey = `IMAGE/${key}.jpg`
@@ -94,16 +88,12 @@ exports.getVideosByDate = async (req, res) => {
         let videoSignedUrl = ""
 
         if(await isKeyExistsInS3(bucket, imageKey)) imageSignedUrl = await generateSignedUrl(bucket, imageKey)
-        if(await isKeyExistsInS3(bucket, metadataKey)) {
-          // const metadataSignedUrl = await generateSignedUrl(bucket, metadataKey) 
+        if(await isKeyExistsInS3(bucket, metadataKey)) 
           metadata = await readCSVFromS3(bucket, metadataKey)
-          console.log("metadata", metadata);
-        }
-        if(await isKeyExistsInS3(bucket, subtitleKey)) {
-          // const subtitleSignedUrl = await generateSignedUrl(bucket, subtitleKey)
+        
+        if(await isKeyExistsInS3(bucket, subtitleKey)) 
           subtitle = await readVTTFromS3(bucket, subtitleKey)
-          console.log("subtitle", subtitle);
-        }
+        
         if(await isKeyExistsInS3(bucket, videoKey)) videoSignedUrl = await generateSignedUrl(bucket, videoKey)
 
         const res_video = {
@@ -129,13 +119,10 @@ exports.getVideosByDate = async (req, res) => {
   }
 };
 
-
-
 exports.getBeforeVideo = async (req, res) => {
   try {
     const bucket = process.env.AWS_BUCKET_NAME
-    console.log(req.query.date);
-    const date = req.query.date
+    const media_key = req.query.key
     
     let recentvideo = undefined
     const videos = await Video.find({}).sort({date: 1}); // Latest videos first
@@ -147,28 +134,23 @@ exports.getBeforeVideo = async (req, res) => {
     
     let index = 0
     for (const video of videos) {
-      if (video.date.toISOString() === date) {
+      if (video.key === media_key) {
         break
       }
       
       index ++
     }
     
-    console.log("index", index);
-
     if(index == 0)
       recentvideo = videos[videos.length-1]
     else recentvideo = videos[index-1]
 
-    console.log(index-1, recentvideo);
-    
     if(recentvideo == undefined) {
       res.status(500).json({status: false});
       return
     }
     
     const subtitleKeyList = await listVTTFiles(bucket, recentvideo.key.split("/")[1]);
-    console.log("subtitleKeyList", subtitleKeyList);
 
     const key = recentvideo.key;
     const imageKey = `IMAGE/${key}.jpg`
@@ -185,7 +167,6 @@ exports.getBeforeVideo = async (req, res) => {
     if(await isKeyExistsInS3(bucket, metadataKey)) {
       // const metadataSignedUrl = await generateSignedUrl(bucket, metadataKey) 
       metadata = await readCSVFromS3(bucket, metadataKey)
-      console.log("metadata", metadata);
     }
     // if(await isKeyExistsInS3(bucket, subtitleKey)) {
     //   // const subtitleSignedUrl = await generateSignedUrl(bucket, subtitleKey)
@@ -213,7 +194,6 @@ exports.getBeforeVideo = async (req, res) => {
 exports.getDateVideo = async (req, res) => {
   try {
     const bucket = process.env.AWS_BUCKET_NAME
-    console.log(req.query.date);
     const date = req.query.date
     
     let recentvideo = undefined
@@ -227,16 +207,12 @@ exports.getDateVideo = async (req, res) => {
     let index = -1, i = 0
     
     for (const video of videos) {
-      console.log(video.date.toISOString().split('T')[0], date.split('T')[0]);
-      
       if (video.date.toISOString().split('T')[0] === date.split('T')[0]) {
         index = i
         break
       }
       i ++
     }
-    
-    console.log(index);
     
     if(index == -1) {
       res.status(200).json({status: false});
@@ -245,10 +221,7 @@ exports.getDateVideo = async (req, res) => {
 
     recentvideo = videos[index]
 
-    console.log(index, recentvideo);
-    
     const subtitleKeyList = await listVTTFiles(bucket, recentvideo.key.split("/")[0]);
-    console.log("subtitleKeyList", subtitleKeyList);
 
     const key = recentvideo.key;
     const imageKey = `IMAGE/${key}.jpg`
@@ -261,18 +234,17 @@ exports.getDateVideo = async (req, res) => {
     let subtitle = {}
     let videoSignedUrl = ""
 
-    if(await isKeyExistsInS3(bucket, imageKey)) imageSignedUrl = await generateSignedUrl(bucket, imageKey)
-    if(await isKeyExistsInS3(bucket, metadataKey)) {
-      // const metadataSignedUrl = await generateSignedUrl(bucket, metadataKey) 
+    if(await isKeyExistsInS3(bucket, imageKey)) 
+      imageSignedUrl = await generateSignedUrl(bucket, imageKey)
+
+    if(await isKeyExistsInS3(bucket, metadataKey)) 
       metadata = await readCSVFromS3(bucket, metadataKey)
-      console.log("metadata", metadata);
-    }
-    if(await isKeyExistsInS3(bucket, subtitleKey)) {
-      // const subtitleSignedUrl = await generateSignedUrl(bucket, subtitleKey)
+    
+    if(await isKeyExistsInS3(bucket, subtitleKey)) 
       subtitle = await readVTTFromS3(bucket, subtitleKey)
-      console.log("subtitle", subtitle);
-    }
-    if(await isKeyExistsInS3(bucket, videoKey)) videoSignedUrl = await generateSignedUrl(bucket, videoKey)
+    
+    if(await isKeyExistsInS3(bucket, videoKey)) 
+      videoSignedUrl = await generateSignedUrl(bucket, videoKey)
 
     const res_video = {
       key: recentvideo.key,
@@ -292,8 +264,7 @@ exports.getDateVideo = async (req, res) => {
 exports.getNextVideo = async (req, res) => {
   try {
     const bucket = process.env.AWS_BUCKET_NAME
-    console.log(req.query.date);
-    const date = req.query.date
+    const media_key = req.query.key
     
     let recentvideo = undefined
     const videos = await Video.find({}).sort({date: 1}); // Latest videos first
@@ -306,8 +277,7 @@ exports.getNextVideo = async (req, res) => {
     let index = 0
     
     for (const video of videos) {
-      if (video.date.toISOString() == date) {
-        console.log(video.date.toISOString());
+      if (video.key === media_key) {
         break
       }
       index ++
@@ -317,7 +287,8 @@ exports.getNextVideo = async (req, res) => {
       recentvideo = videos[index+1]
     else recentvideo = videos[0]
 
-    console.log(index, recentvideo);
+    console.log(index)
+    console.log(recentvideo)
     
     if(recentvideo == undefined) {
       res.status(500).json({status: false});
@@ -325,7 +296,6 @@ exports.getNextVideo = async (req, res) => {
     }
     
     const subtitleKeyList = await listVTTFiles(bucket, recentvideo.key.split("/")[0]);
-    console.log("subtitleKeyList", subtitleKeyList);
 
     const key = recentvideo.key;
     const imageKey = `IMAGE/${key}.jpg`
@@ -338,18 +308,17 @@ exports.getNextVideo = async (req, res) => {
     let subtitle = {}
     let videoSignedUrl = ""
 
-    if(await isKeyExistsInS3(bucket, imageKey)) imageSignedUrl = await generateSignedUrl(bucket, imageKey)
-    if(await isKeyExistsInS3(bucket, metadataKey)) {
-      // const metadataSignedUrl = await generateSignedUrl(bucket, metadataKey) 
+    if(await isKeyExistsInS3(bucket, imageKey)) 
+      imageSignedUrl = await generateSignedUrl(bucket, imageKey)
+    
+    if(await isKeyExistsInS3(bucket, metadataKey)) 
       metadata = await readCSVFromS3(bucket, metadataKey)
-      console.log("metadata", metadata);
-    }
-    if(await isKeyExistsInS3(bucket, subtitleKey)) {
-      // const subtitleSignedUrl = await generateSignedUrl(bucket, subtitleKey)
+    
+    if(await isKeyExistsInS3(bucket, subtitleKey)) 
       subtitle = await readVTTFromS3(bucket, subtitleKey)
-      console.log("subtitle", subtitle);
-    }
-    if(await isKeyExistsInS3(bucket, videoKey)) videoSignedUrl = await generateSignedUrl(bucket, videoKey)
+    
+    if(await isKeyExistsInS3(bucket, videoKey)) 
+      videoSignedUrl = await generateSignedUrl(bucket, videoKey)
 
     const res_video = {
       key: recentvideo.key,
@@ -366,60 +335,71 @@ exports.getNextVideo = async (req, res) => {
   }
 };
 
-exports.getLiveVideos = async (req, res) => {
-  try {
-    const bucket = process.env.AWS_BUCKET_NAME
+exports.getLiveVideos = async (req, res) => {  
+  const uri = process.env.MONGO_URI; // Replace with your MongoDB connection string
+  const dbName = 'video_db';
+  const collectionName = 'videos';
+  const client = new MongoClient(uri);
 
+  try {
+    await client.connect();
+
+    const bucket = process.env.AWS_BUCKET_NAME
     const s3_videos = await getAllUrlsinFolder(bucket, "VIDEO/")
-    const db_videos = await Video.find({}).sort({date: 1}); // Latest videos first
+
+    const db = client.db(dbName);
+    const collection = db.collection(collectionName);
+    await collection.drop()
+    // Example data (replace with your actual data)
+    const data = [];
+
+    let live_key = '', live_date = ''
 
     for (const s3_video of s3_videos) {
-      const dateurl = getDateURLfromKey(s3_video.Key)
-      if(!dateurl.status) continue
-            
-      const is_live = db_videos.filter((db_video) => db_video.date.toISOString() === dateurl.date.toISOString()).length === 0 ? true : false
-      if(is_live) {
-        console.log(dateurl);
-        
-        let videoData = {
-          key: dateurl.path,
-          date: dateurl.date,
-          image: "",
-          metadata: "",
-          subtitle: "",
-          video: ""
-        };
-
-        const key = dateurl.path;
-        const imageKey = `IMAGE/${key}.jpg`
-        const metadataKey = `METADATA/${key}.csv`
-        const subtitleKey = `SUBTITLE/${key}-EN.vtt`
-        const videoKey = `VIDEO/${key}.mkv`
-
-        if(await isKeyExistsInS3(bucket, imageKey)) 
-          videoData.imageSignedUrl = await generateSignedUrl(bucket, imageKey)
-
-        if(await isKeyExistsInS3(bucket, metadataKey)) 
-          videoData.metadata = await readCSVFromS3(bucket, metadataKey)
-        
-        if(await isKeyExistsInS3(bucket, subtitleKey)) 
-          videoData.subtitle = await readVTTFromS3(bucket, subtitleKey)
-        
-        if(await isKeyExistsInS3(bucket, videoKey)) 
-          videoData.videoSignedUrl = await generateSignedUrl(bucket, videoKey)
-
-        const db_video = new Video({
-          key: dateurl.path,
-          date: dateurl.date
-        });
-        await db_video.save();
-
-        res.status(200).json({status: true, data: videoData});
-        return
-      }
+      date_url = getDateURLfromKey(s3_video.Key)
+      live_key = date_url.path
+      live_date = date_url.date
+      
+      data.push({ key: live_key, date: live_date });
     }
 
-    res.status(200).json({status: false, data: {}});
+    console.log("data", data[data.length - 2])
+    console.log("data", data[data.length - 1 ])
+    // Insert multiple documents
+    const result = await collection.insertMany(data);
+
+    if(result.length === 0) {
+      res.status(500).json({status: false, data: []});
+      return
+    }
+    
+    let videoData = {
+      key: live_key,
+      date: live_date,
+      image: "",
+      metadata: "",
+      subtitle: "",
+      video: ""
+    };
+
+    const imageKey = `IMAGE/${live_key}.jpg`
+    const metadataKey = `METADATA/${live_key}.csv`
+    const subtitleKey = `SUBTITLE/${live_key}-EN.vtt`
+    const videoKey = `VIDEO/${live_key}.mkv`
+
+    if(await isKeyExistsInS3(bucket, imageKey)) 
+      videoData.image = await generateSignedUrl(bucket, imageKey)
+
+    if(await isKeyExistsInS3(bucket, metadataKey)) 
+      videoData.metadata = await readCSVFromS3(bucket, metadataKey)
+    
+    if(await isKeyExistsInS3(bucket, subtitleKey)) 
+      videoData.subtitle = await readVTTFromS3(bucket, subtitleKey)
+    
+    if(await isKeyExistsInS3(bucket, videoKey)) 
+      videoData.video = await generateSignedUrl(bucket, videoKey)
+    
+    res.status(200).json({status: true, data: videoData});
   } catch (error) {
     console.error("Error fetching video list from S3:", error);
     res.status(500).json({ message: "Error fetching video list" });
