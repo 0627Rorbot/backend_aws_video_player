@@ -1,5 +1,6 @@
 require("dotenv").config();
 const { MongoClient } = require('mongodb');
+const moment = require('moment');
 
 const { status } = require("express/lib/response");
 const Video = require("../models/Video");
@@ -59,7 +60,7 @@ exports.getRecentVideo = async (req, res) => {
       video: videoSignedUrl
     }
 
-    res.status(200).json({status: true, data: res_video});
+    res.status(200).json({status: true, data: [res_video]});
   } catch (error) {
     res.status(500).json({ status: false, message: error.message });
   }
@@ -69,49 +70,50 @@ exports.getRecentVideo = async (req, res) => {
 exports.getVideosByDate = async (req, res) => {
   try {
     const bucket = process.env.AWS_BUCKET_NAME
-    const date = req.body.date
+    const str_date = req.query.date
+    const date = moment(str_date);
+
     const videos = await Video.find({date: date}).sort({ date: 1 }); // Latest videos first
+    console.log(date);
+    console.log(videos);
+    let real_videos = []
     
-    const res_videos = videos.map( async() => {
-      try {
-        const subtitleKeyList = await listVTTFiles(bucket, recentvideo.key.split("/")[0]);
+    for (const video of videos) {
+      const subtitleKeyList = await listVTTFiles(bucket, video.key.split("/")[0]);
 
-        const key = recentvideo.key;
-        const imageKey = `IMAGE/${key}.jpg`
-        const metadataKey = `METADATA/${key}.csv`
-        const subtitleKey = `SUBTITLE/${key}-EN.vtt`
-        const videoKey = `VIDEO/${key}.mkv`
+      const key = video.key;
+      const imageKey = `IMAGE/${key}.jpg`
+      const metadataKey = `METADATA/${key}.csv`
+      const subtitleKey = `SUBTITLE/${key}-EN.vtt`
+      const videoKey = `VIDEO/${key}.mkv`
 
-        let imageSignedUrl = ""
-        let metadata = {}
-        let subtitle = {}
-        let videoSignedUrl = ""
+      let imageSignedUrl = ""
+      let metadata = {}
+      let subtitle = {}
+      let videoSignedUrl = ""
 
-        if(await isKeyExistsInS3(bucket, imageKey)) imageSignedUrl = await generateSignedUrl(bucket, imageKey)
-        if(await isKeyExistsInS3(bucket, metadataKey)) 
-          metadata = await readCSVFromS3(bucket, metadataKey)
-        
-        if(await isKeyExistsInS3(bucket, subtitleKey)) 
-          subtitle = await readVTTFromS3(bucket, subtitleKey)
-        
-        if(await isKeyExistsInS3(bucket, videoKey)) videoSignedUrl = await generateSignedUrl(bucket, videoKey)
+      if(await isKeyExistsInS3(bucket, imageKey)) imageSignedUrl = await generateSignedUrl(bucket, imageKey)
+      if(await isKeyExistsInS3(bucket, metadataKey)) 
+        metadata = await readCSVFromS3(bucket, metadataKey)
+      
+      if(await isKeyExistsInS3(bucket, subtitleKey)) 
+        subtitle = await readVTTFromS3(bucket, subtitleKey)
+      
+      if(await isKeyExistsInS3(bucket, videoKey)) videoSignedUrl = await generateSignedUrl(bucket, videoKey)
 
-        const res_video = {
-          key: recentvideo.key,
-          date: recentvideo.date,
-          image: imageSignedUrl,
-          metadata: metadata,
-          subtitle: subtitle,
-          video: videoSignedUrl
-        }
-
-        return res_video
-      } catch (error) {
-        return null
+      const res_video = {
+        key: video.key,
+        date: video.date,
+        image: imageSignedUrl,
+        metadata: metadata,
+        subtitle: subtitle,
+        video: videoSignedUrl
       }
-    })
 
-    const real_videos = res_videos.filter((video) => video !=null)
+      real_videos.push(res_video)
+    }
+
+    real_videos = real_videos.filter((video) => video !=null)
 
     res.status(200).json({status: true, data: real_videos});
   } catch (error) {
@@ -168,11 +170,7 @@ exports.getBeforeVideo = async (req, res) => {
       // const metadataSignedUrl = await generateSignedUrl(bucket, metadataKey) 
       metadata = await readCSVFromS3(bucket, metadataKey)
     }
-    // if(await isKeyExistsInS3(bucket, subtitleKey)) {
-    //   // const subtitleSignedUrl = await generateSignedUrl(bucket, subtitleKey)
-    //   subtitle = await readVTTFromS3(bucket, subtitleKey)
-    //   console.log("subtitle", subtitle);
-    // }
+    
     if(await isKeyExistsInS3(bucket, videoKey)) videoSignedUrl = await generateSignedUrl(bucket, videoKey)
 
     const res_video = {
@@ -184,7 +182,7 @@ exports.getBeforeVideo = async (req, res) => {
       video: videoSignedUrl
     }
 
-    res.status(200).json({status: true, data: res_video});
+    res.status(200).json({status: true, data: [res_video]});
   } catch (error) {
     res.status(500).json({ status: false, message: error.message });
   }
@@ -255,7 +253,7 @@ exports.getDateVideo = async (req, res) => {
       video: videoSignedUrl
     }
 
-    res.status(200).json({status: true, data: res_video});
+    res.status(200).json({status: true, data: [res_video]});
   } catch (error) {
     res.status(500).json({ status: false, message: error.message });
   }
@@ -287,9 +285,6 @@ exports.getNextVideo = async (req, res) => {
       recentvideo = videos[index+1]
     else recentvideo = videos[0]
 
-    console.log(index)
-    console.log(recentvideo)
-    
     if(recentvideo == undefined) {
       res.status(500).json({status: false});
       return
@@ -329,7 +324,7 @@ exports.getNextVideo = async (req, res) => {
       video: videoSignedUrl
     }
 
-    res.status(200).json({status: true, data: res_video});
+    res.status(200).json({status: true, data: [res_video]});
   } catch (error) {
     res.status(500).json({ status: false, message: error.message });
   }
@@ -363,8 +358,6 @@ exports.getLiveVideos = async (req, res) => {
       data.push({ key: live_key, date: live_date });
     }
 
-    console.log("data", data[data.length - 2])
-    console.log("data", data[data.length - 1 ])
     // Insert multiple documents
     const result = await collection.insertMany(data);
 
